@@ -1,38 +1,49 @@
 import cv2
 import mediapipe as mp
 
-# Initialize MediaPipe Hands
-mp_hands = mp.solutions.hands
-mp_draw = mp.solutions.drawing_utils
+class HandTracker:
+    def __init__(self, detection_conf=0.7, tracking_conf=0.7):
+        self.mp_hands = mp.solutions.hands
+        self.mp_draw = mp.solutions.drawing_utils
+        self.hands = self.mp_hands.Hands(min_detection_confidence=detection_conf,
+                                         min_tracking_confidence=tracking_conf)
+        self.cap = cv2.VideoCapture(0)
+        self.index_x = None
+        self.index_y = None
+        self.frame = None  # store last frame
 
-cap = cv2.VideoCapture(0)
-
-with mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7) as hands:
-    while True:
-        ret, frame = cap.read()
+    def update(self):
+        ret, frame = self.cap.read()
         if not ret:
-            break
+            return
 
-        frame = cv2.flip(frame, 1)  # Mirror image
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = cv2.flip(frame, 1)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.hands.process(rgb)
 
-        results = hands.process(rgb_frame)
+        self.index_x = None
+        self.index_y = None
 
         if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                # Draw hand landmarks
-                mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            hand_landmarks = results.multi_hand_landmarks[0]
+            tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            self.index_x = tip.x
+            self.index_y = tip.y
 
-                # Get index finger tip coordinates
-                index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-                h, w, _ = frame.shape
-                x, y = int(index_finger_tip.x * w), int(index_finger_tip.y * h)
-                cv2.circle(frame, (x, y), 10, (0, 255, 0), cv2.FILLED)
+            # Draw landmarks on frame
+            self.mp_draw.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+            h, w, _ = frame.shape
+            cx, cy = int(tip.x * w), int(tip.y * h)
+            cv2.circle(frame, (cx, cy), 10, (0, 255, 0), -1)
 
-        cv2.imshow("Hand Tracking", frame)
+        self.frame = frame  # store the frame for showing in main loop
 
-        if cv2.waitKey(1) & 0xFF == 27:  # ESC to exit
-            break
+    def get_index_x(self):
+        return self.index_x
 
-cap.release()
-cv2.destroyAllWindows()
+    def get_index_y(self):
+        return self.index_y
+
+    def close(self):
+        self.cap.release()
+        cv2.destroyAllWindows()
